@@ -71,12 +71,12 @@ func (cfg *Config) createFlags(configV reflect.Value, configT reflect.Type) {
 		tags := strings.Split(tagsStr, ",")
 
 		var (
-			name      = "-" + tags[0]
+			name      = tags[0]
 			shortName = ""
 			usage     = ""
 		)
 
-		if name == "-" {
+		if name == "" {
 			name += fieldT.Name
 		}
 
@@ -93,35 +93,35 @@ func (cfg *Config) createFlags(configV reflect.Value, configT reflect.Type) {
 			cfg.flags.BoolVar(field.Addr().Interface().(*bool), name, field.Bool(), usage)
 
 			if shortName != "" {
-				cfg.flags.BoolVar(field.Addr().Interface().(*bool), shortName, field.Bool(), "alias for --"+name)
+				cfg.flags.BoolVar(field.Addr().Interface().(*bool), shortName, field.Bool(), "alias for -"+name)
 			}
 
 		case reflect.Float64:
 			cfg.flags.Float64Var(field.Addr().Interface().(*float64), name, field.Float(), usage)
 
 			if shortName != "" {
-				cfg.flags.Float64Var(field.Addr().Interface().(*float64), shortName, field.Float(), "alias for --"+name)
+				cfg.flags.Float64Var(field.Addr().Interface().(*float64), shortName, field.Float(), "alias for -"+name)
 			}
 
 		case reflect.Int:
 			cfg.flags.IntVar(field.Addr().Interface().(*int), name, int(field.Int()), usage)
 
 			if shortName != "" {
-				cfg.flags.IntVar(field.Addr().Interface().(*int), shortName, int(field.Int()), "alias for --"+name)
+				cfg.flags.IntVar(field.Addr().Interface().(*int), shortName, int(field.Int()), "alias for -"+name)
 			}
 
 		case reflect.String:
 			cfg.flags.StringVar(field.Addr().Interface().(*string), name, field.String(), usage)
 
 			if shortName != "" {
-				cfg.flags.StringVar(field.Addr().Interface().(*string), shortName, field.String(), "alias for --"+name)
+				cfg.flags.StringVar(field.Addr().Interface().(*string), shortName, field.String(), "alias for -"+name)
 			}
 
 		case reflect.Uint:
 			cfg.flags.UintVar(field.Addr().Interface().(*uint), name, uint(field.Uint()), usage)
 
 			if shortName != "" {
-				cfg.flags.UintVar(field.Addr().Interface().(*uint), shortName, uint(field.Uint()), "alias for --"+name)
+				cfg.flags.UintVar(field.Addr().Interface().(*uint), shortName, uint(field.Uint()), "alias for -"+name)
 			}
 
 		default:
