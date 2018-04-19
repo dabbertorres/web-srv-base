@@ -1,0 +1,66 @@
+version: "3.6"
+
+services:
+  web:
+    image: dabbertorres/web-server-base:latest
+    build: .
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    configs:
+      - source: web-config
+        target: /web.conf
+    networks:
+      - webnet
+    secrets:
+      - db-password
+      - redis-password
+  db:
+    image: mariadb:10.2
+    restart: always
+    environment:
+      - MYSQL_DATABASE=web
+      - MYSQL_ROOT_PASSWORD_FILE=/run/secrets/db-password
+    configs:
+      - source: db-init
+        target: /docker-entrypoint-initdb.d/init.sql
+    networks:
+      - webnet
+    secrets:
+      - db-password
+    volumes:
+      - type: volume
+        source: db-data
+        target: /var/lib/mysql
+  sessions:
+    image: redis:4.0-alpine
+    entrypoint:
+      - "bash"
+      - "-c"
+      - "redis-server"
+      - "--requirepass"
+      - "$$(cat /run/secrets/redis-password)"
+    restart: always
+    networks:
+      - webnet
+    secrets:
+      - redis-password
+
+configs:
+  web-config:
+    file: ./cfg/web.conf
+  db-init:
+    file: ./cfg/db-init.sql
+
+networks:
+  webnet:
+
+secrets:
+  db-password:
+    external: true
+  redis-password:
+    external: true
+
+volumes:
+  db-data:
