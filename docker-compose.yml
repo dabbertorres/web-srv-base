@@ -38,8 +38,7 @@ services:
         target: /var/lib/mysql
   sessions:
     image: redis:4.0-alpine
-    command: >
-      --requirepass $(cat /run/secrets/redis-password)
+    command: redis-server --requirepass '$$(cat /run/secrets/redis-password)'
     restart: always
     networks:
       - webnet
