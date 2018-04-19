@@ -38,12 +38,8 @@ services:
         target: /var/lib/mysql
   sessions:
     image: redis:4.0-alpine
-    entrypoint:
-      - "bash"
-      - "-c"
-      - "redis-server"
-      - "--requirepass"
-      - "$$(cat /run/secrets/redis-password)"
+    command: >
+      --requirepass $(cat /run/secrets/redis-password)
     restart: always
     networks:
       - webnet
