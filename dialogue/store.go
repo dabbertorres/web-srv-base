@@ -146,7 +146,64 @@ func (s *Store) HasSession(r *http.Request) (exists bool, err error) {
 	if err != nil {
 		return false, err
 	}
+	defer conn.Close()
 
 	exists, err = redis.Bool(conn.Do("exists", cookie.Value))
+	return
+}
+
+func (s *Store) IsLoggedIn(r *http.Request) (loggedIn bool, username string, err error) {
+	var (
+		cookie *http.Cookie
+		conn   redis.Conn
+		valid  bool
+	)
+
+	cookie, err = r.Cookie("session")
+	if err != nil || cookie == nil {
+		return
+	}
+
+	conn, err = s.Pool.GetContext(r.Context())
+	if err != nil {
+		return
+	}
+	defer conn.Close()
+
+	err = conn.Send("exists", cookie.Value)
+	if err != nil {
+		return
+	}
+
+	err = conn.Send("hexists", cookie.Value, "user")
+	if err != nil {
+		return
+	}
+
+	err = conn.Send("hget", cookie.Value, "user")
+	if err != nil {
+		return
+	}
+
+	err = conn.Flush()
+	if err != nil {
+		return
+	}
+
+	valid, err = redis.Bool(conn.Receive())
+	if err != nil {
+		return
+	}
+	if !valid {
+		err = errors.New("session does not exist")
+		return
+	}
+
+	loggedIn, err = redis.Bool(conn.Receive())
+	if err != nil || !loggedIn {
+		return
+	}
+
+	username, err = redis.String(conn.Receive())
 	return
 }
