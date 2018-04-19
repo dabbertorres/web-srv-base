@@ -173,7 +173,7 @@ func (cfg *Config) loadConfigFile() error {
 			continue
 		}
 
-		key, value := comps[0], comps[1]
+		key, value := strings.TrimSpace(comps[0]), strings.TrimSpace(comps[1])
 
 		cfgFlag := cfg.flags.Lookup(key)
 		if cfgFlag == nil {
