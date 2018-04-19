@@ -12,7 +12,7 @@ const (
 )
 
 type Config struct {
-	Hostname      string `how:"hostname,h,specify the hostname name the server should respond as"`
+	Hostname      string `how:"hostname,n,specify the hostname name the server should respond as"`
 	DBDriver      string `how:"db-driver,,specify the the database driver to use"`
 	DBAddr        string `how:"db,,specify the location of the database the server should use"`
 	DBPassFile    string `how:"db-password-file,,specify the location of the file containing the db user password"`

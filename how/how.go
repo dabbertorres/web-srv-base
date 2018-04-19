@@ -104,10 +104,10 @@ func (cfg *Config) createFlags(configV reflect.Value, configT reflect.Type) {
 			}
 
 		case reflect.Int:
-			cfg.flags.Int64Var(field.Addr().Interface().(*int64), name, field.Int(), usage)
+			cfg.flags.IntVar(field.Addr().Interface().(*int), name, int(field.Int()), usage)
 
 			if shortName != "" {
-				cfg.flags.Int64Var(field.Addr().Interface().(*int64), shortName, field.Int(), "alias for --"+name)
+				cfg.flags.IntVar(field.Addr().Interface().(*int), shortName, int(field.Int()), "alias for --"+name)
 			}
 
 		case reflect.String:
@@ -118,10 +118,10 @@ func (cfg *Config) createFlags(configV reflect.Value, configT reflect.Type) {
 			}
 
 		case reflect.Uint:
-			cfg.flags.Uint64Var(field.Addr().Interface().(*uint64), name, field.Uint(), usage)
+			cfg.flags.UintVar(field.Addr().Interface().(*uint), name, uint(field.Uint()), usage)
 
 			if shortName != "" {
-				cfg.flags.Uint64Var(field.Addr().Interface().(*uint64), shortName, field.Uint(), "alias for --"+name)
+				cfg.flags.UintVar(field.Addr().Interface().(*uint), shortName, uint(field.Uint()), "alias for --"+name)
 			}
 
 		default:
