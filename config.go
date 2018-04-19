@@ -18,6 +18,7 @@ type Config struct {
 	DBPassFile    string `how:"db-password-file,,specify the location of the file containing the db user password"`
 	RedisUrl      string `how:"redis,,specify where the redis service is found"`
 	RedisPassFile string `how:"redis-password-file,,specify the location of the file containing the redis password"`
+	SessionTTL    int    `how:"session-ttl,,specify the time-to-live for a session"`
 	CertDir       string `how:"cert-dir,,specify the directory to store HTTPS certs"`
 	CertRenew     int    `how:"cert-renew,,specify the number of hours before certs are set to expire to renew certs"`
 	CertEmail     string `how:"cert-email,,set a contact email address for Let's Encrypt to send notifications to'"`
@@ -31,6 +32,7 @@ func DefaultConfig() Config {
 		DBPassFile:    "",
 		RedisUrl:      redisUrl,
 		RedisPassFile: "",
+		SessionTTL:    0,
 		CertDir:       certDir,
 		CertRenew:     certRenew,
 		CertEmail:     certEmail,

@@ -23,6 +23,7 @@ func main() {
 
 	err := logme.Init("logs")
 	if err != nil {
+		exitCode = 1
 		panic(err)
 	}
 	defer logme.Deinit()
@@ -40,7 +41,7 @@ func main() {
 
 	// state setup...
 
-	redisPool, err := SetupRedisPool(&cfg, string(redisPass))
+	redisPool, err := SetupRedisPool(&cfg, redisPass)
 	if err != nil {
 		logme.Err().Println("Connecting to Redis:", err)
 		exitCode = 1
@@ -48,7 +49,7 @@ func main() {
 	}
 	defer redisPool.Close()
 
-	sessions := dialogue.NewStore(time.Hour*24, redisPool)
+	sessions := dialogue.NewStore(time.Duration(cfg.SessionTTL)*time.Second, redisPool)
 
 	db, err := SetupDB(&cfg)
 	if err != nil {
@@ -58,13 +59,22 @@ func main() {
 	}
 	defer db.Close()
 
-	httpsMan := LetsEncryptSetup(&cfg)
+	httpsMan, err := LetsEncryptSetup(&cfg)
+	if err != nil {
+		logme.Err().Println("Configuring Let's Encrypt:", err)
+		exitCode = 1
+		return
+	}
 
 	// web interface...
 
+	// handle ACME requests, otherwise redirect all other traffic to the https version
 	insecureSrv := &http.Server{
-		Addr:     ":http",
-		Handler:  httpsMan.HTTPHandler(nil),
+		Addr: ":http",
+		Handler: httpsMan.HTTPHandler(http.HandlerFunc(
+			func(w http.ResponseWriter, r *http.Request) {
+				http.Redirect(w, r, "https://"+r.Host+r.RequestURI, http.StatusMovedPermanently)
+			})),
 		ErrorLog: logme.Err(),
 	}
 
@@ -79,7 +89,9 @@ func main() {
 		TLSConfig: &tls.Config{GetCertificate: httpsMan.GetCertificate},
 	}
 
-	// serve http for TLS SNI challenges and such. All other requests are redirected to https
+	// run...
+
+	// serve http for TLS SNI challenges and such.
 	go func() {
 		err := insecureSrv.ListenAndServe()
 		if err != nil && err != http.ErrServerClosed {

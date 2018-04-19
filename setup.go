@@ -38,7 +38,7 @@ func SetupInterruptCatch(wait chan<- Interrupt, timeout time.Duration) {
 	}()
 }
 
-func LoadConfig() (cfg Config, redisPass []byte, err error) {
+func LoadConfig() (cfg Config, redisPass string, err error) {
 	config := how.Config{}
 	err = config.Load("webServer", &cfg)
 	if err != nil {
@@ -51,29 +51,47 @@ func LoadConfig() (cfg Config, redisPass []byte, err error) {
 	if err != nil {
 		return
 	}
-	cfg.DBAddr = strings.Replace(cfg.DBAddr, "password", string(dbPass), -1)
+	cfg.DBAddr = strings.Replace(cfg.DBAddr, "password", strings.TrimSpace(string(dbPass)), -1)
 
 	// get the redis password
-	redisPass, err = ioutil.ReadFile(cfg.RedisPassFile)
+	var redisPassBuf []byte
+	redisPassBuf, err = ioutil.ReadFile(cfg.RedisPassFile)
+	redisPass = strings.TrimSpace(string(redisPassBuf))
 	return
 }
 
 func SetupRedisPool(cfg *Config, redisPassword string) (pool *redis.Pool, err error) {
 	pool = &redis.Pool{
-		Dial: func() (redis.Conn, error) {
-			return redis.Dial("tcp", cfg.RedisUrl, redis.DialReadTimeout(5*time.Second), redis.DialWriteTimeout(5*time.Second), redis.DialPassword(redisPassword))
+		Dial: func() (conn redis.Conn, err error) {
+			conn, err = redis.Dial("tcp", cfg.RedisUrl, redis.DialReadTimeout(15*time.Second), redis.DialWriteTimeout(15*time.Second))
+			if err != nil {
+				return
+			}
+
+			_, err = conn.Do("auth", redisPassword)
+			if err != nil {
+				conn.Close()
+				conn = nil
+			}
+			return
+		},
+		TestOnBorrow: func(conn redis.Conn, t time.Time) (err error) {
+			_, err = conn.Do("ping")
+			return
 		},
 		MaxIdle:     3,
 		IdleTimeout: 5 * time.Minute,
 	}
 
 	// make sure we have a valid connection
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	testConn, err := pool.GetContext(ctx)
+	var testConn redis.Conn
+	testConn, err = pool.GetContext(ctx)
 	if err != nil {
 		pool.Close()
+		pool = nil
 	} else {
 		testConn.Close()
 	}
@@ -95,15 +113,19 @@ func SetupDB(cfg *Config) (db *sql.DB, err error) {
 	return
 }
 
-func LetsEncryptSetup(cfg *Config) *autocert.Manager {
-	return &autocert.Manager{
-		Prompt:      autocert.AcceptTOS,
-		Cache:       autocert.DirCache(cfg.CertDir),
-		HostPolicy:  autocert.HostWhitelist(cfg.Hostname),
-		RenewBefore: time.Duration(cfg.CertRenew) * time.Hour,
-		Email:       cfg.CertEmail,
-		ForceRSA:    false,
+func LetsEncryptSetup(cfg *Config) (man *autocert.Manager, err error) {
+	err = os.MkdirAll(cfg.CertDir, 0755)
+	if err == nil {
+		man = &autocert.Manager{
+			Prompt:      autocert.AcceptTOS,
+			Cache:       autocert.DirCache(cfg.CertDir),
+			HostPolicy:  autocert.HostWhitelist(cfg.Hostname),
+			RenewBefore: time.Duration(cfg.CertRenew) * time.Hour,
+			Email:       cfg.CertEmail,
+			ForceRSA:    false,
+		}
 	}
+	return
 }
 
 func RegisterRoutes(r *mux.Router, db *sql.DB, sessions *dialogue.Store) {
