@@ -89,12 +89,6 @@ func adminLoginAttempt(db *sql.DB, sessions *dialogue.Store) http.HandlerFunc {
 
 		logme.Info().Printf("Admin '%s' logged in", un)
 
-		// if valid user
-		// infoLog.Printf("User '%s' logged in\n", un)
-		//
-		// if not valid user
-		// infoLog.Printf("Failed attempt to login as '%s'. Valid username: %v\n", un, usernameFound)
-
 		yes, err := sessions.HasSession(r)
 		if err != nil {
 			logme.Err().Println("checking session validity:", err)
