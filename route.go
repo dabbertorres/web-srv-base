@@ -6,10 +6,10 @@ import (
 	"net/http"
 
 	"github.com/gomodule/redigo/redis"
+	"golang.org/x/crypto/bcrypt"
 
 	"webServer/dialogue"
 	"webServer/logme"
-	"golang.org/x/crypto/bcrypt"
 )
 
 type Route interface {
@@ -67,7 +67,7 @@ func adminLoginAttempt(db *sql.DB, sessions *dialogue.Store) http.HandlerFunc {
 
 		err = bcrypt.CompareHashAndPassword([]byte(hashedPw), []byte(pw))
 		if err != nil {
-			logme.Err().Printf("failed admin login as '%s': %v\n", un, )
+			logme.Err().Printf("failed admin login as '%s': %v\n", un)
 			// TODO return bad login page
 			w.WriteHeader(http.StatusUnauthorized)
 			return

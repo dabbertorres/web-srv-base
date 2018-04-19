@@ -3,8 +3,6 @@ version: "3.6"
 services:
   web:
     image: dabbertorres/web-server-base:latest
-    build: .
-    restart: always
     depends_on:
       - db
       - redis
@@ -21,7 +19,6 @@ services:
       - redis-password
   db:
     image: mariadb:10.2
-    restart: always
     environment:
       - MYSQL_DATABASE=web
       - MYSQL_ROOT_PASSWORD_FILE=/run/secrets/db-password
@@ -38,8 +35,7 @@ services:
         target: /var/lib/mysql
   sessions:
     image: redis:4.0-alpine
-    command: redis-server --requirepass '$$(cat /run/secrets/redis-password)'
-    restart: always
+    command: sh -c "redis-server --requirepass `cat /run/secrets/redis-password`"
     networks:
       - webnet
     secrets:

@@ -64,7 +64,6 @@ func SetupRedisPool(cfg *Config, redisPassword string) (pool *redis.Pool, err er
 			return redis.Dial("tcp", cfg.RedisUrl, redis.DialReadTimeout(5*time.Second), redis.DialWriteTimeout(5*time.Second), redis.DialPassword(redisPassword))
 		},
 		MaxIdle:     3,
-		MaxActive:   0,
 		IdleTimeout: 5 * time.Minute,
 	}
 
