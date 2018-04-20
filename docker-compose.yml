@@ -17,6 +17,10 @@ services:
     secrets:
       - db-password
       - redis-password
+    volumes:
+      - type: volume
+        source: certs
+        target: /certs
   db:
     image: mariadb:10.2
     environment:
@@ -58,3 +62,4 @@ secrets:
 
 volumes:
   db-data:
+  certs:
