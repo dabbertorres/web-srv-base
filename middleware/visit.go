@@ -10,17 +10,22 @@ import (
 
 	"webServer/api"
 	"webServer/api/db"
-	"webServer/dialogue"
 	"webServer/logme"
 )
 
-func Visit(getDB api.GetDB, sessions *dialogue.Store) mux.MiddlewareFunc {
+func Visit(getDB api.GetDB, getSess api.GetSession) mux.MiddlewareFunc {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// middleware should not stop a request from passing through
 			defer next.ServeHTTP(w, r)
 
-			_, username, err := sessions.IsLoggedIn(r)
+			sess, err := getSess(r)
+			if err != nil {
+				logme.Warn().Println("obtaining session handle:", err)
+				return
+			}
+
+			_, username, err := sess.IsLoggedIn()
 			if err != nil {
 				logme.Warn().Println("obtaining session user:", err)
 			}

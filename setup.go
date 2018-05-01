@@ -128,7 +128,7 @@ func RegisterRoutes(r *mux.Router, db *sql.DB, sessions *dialogue.Store) {
 	r.NotFoundHandler = staticFileHandler("app/404.html")
 
 	r.Use(sessions.Middleware)
-	r.Use(middleware.Visit(getDB, sessions))
+	r.Use(middleware.Visit(getDB, getSess))
 
 	// main
 	r.Path("/").
