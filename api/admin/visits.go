@@ -11,7 +11,6 @@ import (
 
 	"webServer/api"
 	"webServer/api/db"
-	"webServer/dialogue"
 	"webServer/logme"
 )
 
@@ -20,7 +19,7 @@ const (
 	reqTimeLayout = "2006-01-02T15:04Z0700"
 )
 
-func Visits(r *mux.Route, getDB api.GetDB, sessions *dialogue.Store) {
+func Visits(r *mux.Route, getDB api.GetDB, getSession api.GetSession) {
 	r.Methods(http.MethodGet).Path("/visits").HandlerFunc(
 		func(w http.ResponseWriter, r *http.Request) {
 			dbConn, err := getDB(r.Context())
@@ -31,7 +30,9 @@ func Visits(r *mux.Route, getDB api.GetDB, sessions *dialogue.Store) {
 			}
 			defer dbConn.Close()
 
-			err = CheckLoggedIn(r, dbConn, sessions)
+			sess, err := getSession(r)
+
+			err = CheckLoggedIn(r, dbConn, sess)
 			if err != nil {
 				if err == ErrNotLoggedIn || err == ErrNotAdmin || err == ErrDisabled {
 					w.WriteHeader(http.StatusUnauthorized)

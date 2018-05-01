@@ -18,7 +18,6 @@ import (
 	"webServer/api/admin"
 	"webServer/dialogue"
 	"webServer/how"
-	"webServer/logme"
 	"webServer/middleware"
 )
 
@@ -121,7 +120,10 @@ func LetsEncryptSetup(cfg *Config) (man *autocert.Manager, err error) {
 }
 
 func RegisterRoutes(r *mux.Router, db *sql.DB, sessions *dialogue.Store) {
-	getDB := func(ctx context.Context) (*sql.Conn, error) { return db.Conn(ctx) }
+	var (
+		getDB   = func(ctx context.Context) (*sql.Conn, error) { return db.Conn(ctx) }
+		getSess = func(r *http.Request) (dialogue.Conn, error) { return sessions.Open(r) }
+	)
 
 	r.NotFoundHandler = staticFileHandler("app/404.html")
 
@@ -136,25 +138,10 @@ func RegisterRoutes(r *mux.Router, db *sql.DB, sessions *dialogue.Store) {
 	// admin
 	adminR := r.Path("/admin").Subrouter()
 
-	admin.Visits(adminR.NewRoute(), getDB, sessions)
+	admin.Visits(adminR.NewRoute(), getDB, getSess)
 
-	// logged-in admin will pass the matcher, going straight to the dashboard
-	adminR.Methods("GET").
-		MatcherFunc(func(r *http.Request, rm *mux.RouteMatch) bool {
-		ok, err := sessions.HasSession(r)
-		if err != nil {
-			logme.Err().Println("Route:", rm.Route.GetName(), err)
-			return false
-		}
-		return ok
-	}).Handler(staticFileHandler("app/admin/dashboard.html"))
-
-	// not logged in admin will not pass above matcher, going here to login
-	adminR.Methods("GET").
-		Handler(staticFileHandler("app/admin/login.html"))
-
-	adminR.Methods("POST").
-		Handler(adminLoginAttempt(db, sessions))
+	// TODO admin/dashboard.html
+	// TODO admin/login.html
 
 	// style
 	r.Path("/style/main.css").

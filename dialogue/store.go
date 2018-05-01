@@ -27,6 +27,11 @@ type Store struct {
 	pool     *redis.Pool
 }
 
+type Conn struct {
+	conn redis.Conn
+	r    *http.Request
+}
+
 func NewStore(lifetime time.Duration, pool *redis.Pool) *Store {
 	return &Store{
 		lifetime: lifetime,
@@ -44,7 +49,15 @@ func (s *Store) Middleware(next http.Handler) http.Handler {
 			return
 		} else {
 			// not important to functionality, so don't cancel request if it fails
-			err = s.UpdateLocation(r, r.RequestURI)
+			c, err := s.Open(r)
+			if err != nil {
+				logme.Err().Println("updating session location:", err)
+				w.WriteHeader(http.StatusInternalServerError)
+				return
+			}
+			defer c.Close()
+
+			err = c.UpdateLocation()
 			if err != nil {
 				logme.Err().Println("updating session location:", err)
 			}
@@ -114,23 +127,21 @@ func (s *Store) NewSession(w http.ResponseWriter, r *http.Request) (key Key, err
 
 	http.SetCookie(w, cookie)
 	r.AddCookie(cookie)
-
 	return
 }
 
-func (s *Store) SetUser(r *http.Request, user string) error {
-	conn, err := s.pool.GetContext(r.Context())
-	if err != nil {
-		return err
-	}
-	defer conn.Close()
+func (s *Store) Open(r *http.Request) (Conn, error) {
+	c, err := s.pool.GetContext(r.Context())
+	return Conn{c, r}, err
+}
 
-	key, err := r.Cookie("session")
+func (c Conn) SetUser(user string) error {
+	key, err := c.r.Cookie("session")
 	if err != nil || key == nil {
 		return err
 	}
 
-	exists, err := redis.Bool(conn.Do("exists", key.Value))
+	exists, err := redis.Bool(c.conn.Do("exists", key.Value))
 	if err != nil {
 		return err
 	}
@@ -138,7 +149,7 @@ func (s *Store) SetUser(r *http.Request, user string) error {
 		return ErrSessionNotExist
 	}
 
-	setUser, err := redis.Bool(conn.Do("hsetnx", key.Value, "user", user))
+	setUser, err := redis.Bool(c.conn.Do("hsetnx", key.Value, "user", user))
 	if err != nil {
 		return err
 	}
@@ -149,19 +160,13 @@ func (s *Store) SetUser(r *http.Request, user string) error {
 	return nil
 }
 
-func (s *Store) UpdateLocation(r *http.Request, location string) error {
-	conn, err := s.pool.GetContext(r.Context())
-	if err != nil {
-		return err
-	}
-	defer conn.Close()
-
-	key, err := r.Cookie("session")
+func (c Conn) UpdateLocation() error {
+	key, err := c.r.Cookie("session")
 	if err != nil || key == nil {
 		return err
 	}
 
-	exists, err := redis.Bool(conn.Do("exists", key.Value))
+	exists, err := redis.Bool(c.conn.Do("exists", key.Value))
 	if err != nil {
 		return err
 	}
@@ -169,29 +174,20 @@ func (s *Store) UpdateLocation(r *http.Request, location string) error {
 		return ErrSessionNotExist
 	}
 
-	_, err = conn.Do("hset", key.Value, "location", location)
+	_, err = c.conn.Do("hset", key.Value, "location", c.r.RequestURI)
 
 	return err
 }
 
-func (s *Store) Get(r *http.Request) (sess Session, err error) {
-	var (
-		conn redis.Conn
-		key  *http.Cookie
-	)
-	conn, err = s.pool.GetContext(r.Context())
-	if err != nil {
-		return
-	}
-	defer conn.Close()
-
-	key, err = r.Cookie("session")
+func (c Conn) Get() (sess Session, err error) {
+	var key *http.Cookie
+	key, err = c.r.Cookie("session")
 	if err != nil || key == nil {
 		return
 	}
 
 	var reply []interface{}
-	reply, err = redis.Values(conn.Do("hgetall", key.Value))
+	reply, err = redis.Values(c.conn.Do("hgetall", key.Value))
 	if err != nil {
 		return
 	}
@@ -202,7 +198,7 @@ func (s *Store) Get(r *http.Request) (sess Session, err error) {
 	}
 
 	var ttl int
-	ttl, err = redis.Int(conn.Do("ttl", key.Value))
+	ttl, err = redis.Int(c.conn.Do("ttl", key.Value))
 	if err != nil {
 		return
 	}
@@ -211,44 +207,33 @@ func (s *Store) Get(r *http.Request) (sess Session, err error) {
 	return
 }
 
-func (s *Store) HasSession(r *http.Request) (exists bool, err error) {
-	cookie, err := r.Cookie("session")
+func (c Conn) HasSession() (exists bool, err error) {
+	cookie, err := c.r.Cookie("session")
 	if err != nil || cookie == nil {
 		return false, nil
 	}
 
-	conn, err := s.pool.GetContext(r.Context())
-	if err != nil {
-		return false, err
-	}
-	defer conn.Close()
-
-	exists, err = redis.Bool(conn.Do("exists", cookie.Value))
+	exists, err = redis.Bool(c.conn.Do("exists", cookie.Value))
 	return
 }
 
-func (s *Store) IsLoggedIn(r *http.Request) (loggedIn bool, username string, err error) {
-	var (
-		cookie *http.Cookie
-		conn   redis.Conn
-	)
+func (c Conn) IsLoggedIn() (loggedIn bool, username string, err error) {
+	var cookie *http.Cookie
 
-	cookie, err = r.Cookie("session")
+	cookie, err = c.r.Cookie("session")
 	if err != nil || cookie == nil {
 		return
 	}
 
-	conn, err = s.pool.GetContext(r.Context())
-	if err != nil {
-		return
-	}
-	defer conn.Close()
-
-	username, err = redis.String(conn.Do("hget", cookie.Value, "user"))
+	username, err = redis.String(c.conn.Do("hget", cookie.Value, "user"))
 	if err != nil {
 		return
 	}
 
 	loggedIn = username != ""
 	return
+}
+
+func (c Conn) Close() error {
+	return c.conn.Close()
 }
