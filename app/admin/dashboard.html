@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8">
     <title>Home</title>
-    <link rel="stylesheet" href="/css/main.css">
+    <link rel="stylesheet" href="/style/main.css">
 </head>
 <body>
 <header>
@@ -11,7 +11,15 @@
 </header>
 
 <main>
-
+    <form action="/admin/dashboard" method="get">
+        <div>
+            <label for="start">Start:</label>
+            <input id="start" type="datetime-local">
+        </div>
+        <div>
+            <label for="end">End:</label>
+        </div>
+    </form>
 </main>
 
 <footer>

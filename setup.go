@@ -15,9 +15,11 @@ import (
 	"github.com/gorilla/mux"
 	"golang.org/x/crypto/acme/autocert"
 
+	"webServer/api/admin"
 	"webServer/dialogue"
 	"webServer/how"
 	"webServer/logme"
+	"webServer/middleware"
 )
 
 type Interrupt struct {
@@ -63,17 +65,7 @@ func LoadConfig() (cfg Config, redisPass string, err error) {
 func SetupRedisPool(cfg *Config, redisPassword string) (pool *redis.Pool, err error) {
 	pool = &redis.Pool{
 		Dial: func() (conn redis.Conn, err error) {
-			conn, err = redis.Dial("tcp", cfg.RedisUrl, redis.DialReadTimeout(15*time.Second), redis.DialWriteTimeout(15*time.Second))
-			if err != nil {
-				return
-			}
-
-			_, err = conn.Do("auth", redisPassword)
-			if err != nil {
-				conn.Close()
-				conn = nil
-			}
-			return
+			return redis.Dial("tcp", cfg.RedisUrl, redis.DialReadTimeout(15*time.Second), redis.DialWriteTimeout(15*time.Second), redis.DialPassword(redisPassword))
 		},
 		TestOnBorrow: func(conn redis.Conn, t time.Time) (err error) {
 			_, err = conn.Do("ping")
@@ -100,7 +92,7 @@ func SetupRedisPool(cfg *Config, redisPassword string) (pool *redis.Pool, err er
 }
 
 func SetupDB(cfg *Config) (db *sql.DB, err error) {
-	db, err = sql.Open(cfg.DBDriver, cfg.DBAddr)
+	db, err = sql.Open(cfg.DBDriver, cfg.DBAddr+"?parseTime=true")
 	if err != nil {
 		return
 	}
@@ -129,36 +121,43 @@ func LetsEncryptSetup(cfg *Config) (man *autocert.Manager, err error) {
 }
 
 func RegisterRoutes(r *mux.Router, db *sql.DB, sessions *dialogue.Store) {
+	getDB := func(ctx context.Context) (*sql.Conn, error) { return db.Conn(ctx) }
+
 	r.NotFoundHandler = staticFileHandler("app/404.html")
 
-	// main html
+	r.Use(sessions.Middleware)
+	r.Use(middleware.Visit(getDB, sessions))
+
+	// main
 	r.Path("/").
 		Methods("GET").
 		Handler(staticFileHandler("app/index.html"))
 
 	// admin
-	admin := r.Path("/admin").Subrouter()
+	adminR := r.Path("/admin").Subrouter()
+
+	admin.Visits(adminR.NewRoute(), getDB, sessions)
 
 	// logged-in admin will pass the matcher, going straight to the dashboard
-	admin.Methods("GET").
+	adminR.Methods("GET").
 		MatcherFunc(func(r *http.Request, rm *mux.RouteMatch) bool {
-			ok, err := sessions.HasSession(r)
-			if err != nil {
-				logme.Err().Println("Route:", rm.Route.GetName(), err)
-				return false
-			}
-			return ok
-		}).Handler(staticFileHandler("app/admin/dashboard.html"))
+		ok, err := sessions.HasSession(r)
+		if err != nil {
+			logme.Err().Println("Route:", rm.Route.GetName(), err)
+			return false
+		}
+		return ok
+	}).Handler(staticFileHandler("app/admin/dashboard.html"))
 
 	// not logged in admin will not pass above matcher, going here to login
-	admin.Methods("GET").
+	adminR.Methods("GET").
 		Handler(staticFileHandler("app/admin/login.html"))
 
-	admin.Methods("POST").
+	adminR.Methods("POST").
 		Handler(adminLoginAttempt(db, sessions))
 
 	// style
-	r.Path("style/main.css").
+	r.Path("/style/main.css").
 		Methods("GET").
-		Handler(staticFileHandler("app/style/main.style"))
+		Handler(staticFileHandler("app/style/main.css"))
 }

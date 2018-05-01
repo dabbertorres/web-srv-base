@@ -5,26 +5,11 @@ import (
 	"io/ioutil"
 	"net/http"
 
-	"github.com/gomodule/redigo/redis"
 	"golang.org/x/crypto/bcrypt"
 
 	"webServer/dialogue"
 	"webServer/logme"
 )
-
-type Route interface {
-	http.Handler
-}
-
-type RouteDB interface {
-	Route
-	DB() *sql.DB
-}
-
-type RouteRedis interface {
-	Route
-	Redis() *redis.Conn
-}
 
 func staticFileHandler(filepath string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -50,14 +35,13 @@ func adminLoginAttempt(db *sql.DB, sessions *dialogue.Store) http.HandlerFunc {
 
 		// try to login user with DB
 
-		row := db.QueryRow("select (password, admin, enabled) from users where name = $1", un)
-
 		var (
 			hashedPw string
 			admin    bool
 			enabled  bool
+			err      error
 		)
-		err := row.Scan(&hashedPw, &admin, &enabled)
+		err = db.QueryRow("select password, admin, enabled from users where name = ?", un).Scan(&hashedPw, &admin, &enabled)
 		if err != nil {
 			logme.Err().Printf("failed admin login as '%s': %v\n", un, err)
 			// TODO return bad login page
@@ -97,15 +81,14 @@ func adminLoginAttempt(db *sql.DB, sessions *dialogue.Store) http.HandlerFunc {
 		}
 
 		if yes {
-			cookie, _ := r.Cookie("session")
-			err = sessions.SetUser(r.Context(), dialogue.Key(cookie.Value), un)
+			err = sessions.SetUser(r, un)
 			if err != nil {
 				logme.Err().Printf("Assigning session to user '%s': %v\n", un, err)
 				w.WriteHeader(http.StatusInternalServerError)
 				return
 			}
 		} else {
-			key, err := sessions.NewSession(r.Context(), un, r.RemoteAddr, r.UserAgent(), r.URL.Path)
+			key, err := sessions.NewSession(w, r)
 			if err != nil {
 				logme.Err().Printf("Creating new session for user '%s': %v\n", un, err)
 				w.WriteHeader(http.StatusInternalServerError)

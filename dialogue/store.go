@@ -2,7 +2,6 @@ package dialogue
 
 import (
 	"bytes"
-	"context"
 	"crypto/rand"
 	"encoding/base64"
 	"errors"
@@ -10,32 +9,59 @@ import (
 	"net/http"
 	"time"
 
+	"webServer/logme"
+
 	"github.com/gomodule/redigo/redis"
+)
+
+var (
+	ErrSessionNotExist = errors.New("session does not exist")
+	ErrSessionExists   = errors.New("session already exists")
+	ErrSessionHasUser  = errors.New("session already has a user")
 )
 
 type Key string
 
 type Store struct {
-	Lifetime time.Duration `json:"lifetime"`
-	Pool     *redis.Pool
+	lifetime time.Duration
+	pool     *redis.Pool
 }
 
 func NewStore(lifetime time.Duration, pool *redis.Pool) *Store {
 	return &Store{
-		Lifetime: lifetime,
-		Pool:     pool,
+		lifetime: lifetime,
+		pool:     pool,
 	}
 }
 
-func (s *Store) NewSession(ctx context.Context, user, ipAddr, userAgent, location string) (key Key, err error) {
+func (s *Store) Middleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// if we have issues creating sessions, nothing is going to work, so just respond saying we have issues
+		_, err := s.NewSession(w, r)
+		if err != nil && err != ErrSessionExists {
+			logme.Err().Println("creating new session:", err)
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		} else {
+			// not important to functionality, so don't cancel request if it fails
+			err = s.UpdateLocation(r, r.RequestURI)
+			if err != nil {
+				logme.Err().Println("updating session location:", err)
+			}
+		}
+
+		next.ServeHTTP(w, r)
+	})
+}
+
+func (s *Store) NewSession(w http.ResponseWriter, r *http.Request) (key Key, err error) {
 	const (
 		keyRandBytes = 16
 	)
 
 	buf := bytes.NewBuffer(nil)
-
-	buf.WriteString(ipAddr)
-	buf.WriteString(userAgent)
+	buf.WriteString(r.RemoteAddr)
+	buf.WriteString(r.UserAgent())
 
 	n, err := buf.ReadFrom(io.LimitReader(rand.Reader, keyRandBytes))
 	if err != nil {
@@ -48,7 +74,7 @@ func (s *Store) NewSession(ctx context.Context, user, ipAddr, userAgent, locatio
 
 	key = Key(base64.StdEncoding.EncodeToString(buf.Bytes()))
 
-	conn, err := s.Pool.GetContext(ctx)
+	conn, err := s.pool.GetContext(r.Context())
 	if err != nil {
 		return
 	}
@@ -58,25 +84,17 @@ func (s *Store) NewSession(ctx context.Context, user, ipAddr, userAgent, locatio
 	if err != nil {
 		return
 	}
-
 	if exists {
-		err = errors.New("session already exists")
+		err = ErrSessionExists
 		return
 	}
 
-	err = conn.Send("hmset", key, "ip", ipAddr, "location", location)
+	err = conn.Send("hmset", key, "ip", r.RemoteAddr, "location", r.RequestURI)
 	if err != nil {
 		return
 	}
 
-	if user != "" {
-		err = conn.Send("hset", key, "user", user)
-		if err != nil {
-			return
-		}
-	}
-
-	err = conn.Send("expire", key, int(s.Lifetime.Seconds()))
+	err = conn.Send("expire", key, int(s.lifetime.Seconds()))
 	if err != nil {
 		return
 	}
@@ -86,37 +104,94 @@ func (s *Store) NewSession(ctx context.Context, user, ipAddr, userAgent, locatio
 		return
 	}
 
+	cookie := &http.Cookie{
+		Name:     "session",
+		Value:    string(key),
+		MaxAge:   int(s.lifetime.Seconds()),
+		Secure:   true,
+		HttpOnly: true,
+	}
+
+	http.SetCookie(w, cookie)
+	r.AddCookie(cookie)
+
 	return
 }
 
-func (s *Store) SetUser(ctx context.Context, key Key, user string) error {
-	conn, err := s.Pool.GetContext(ctx)
+func (s *Store) SetUser(r *http.Request, user string) error {
+	conn, err := s.pool.GetContext(r.Context())
 	if err != nil {
 		return err
 	}
 	defer conn.Close()
 
-	set, err := redis.Bool(conn.Do("hsetnx", key, "user", user))
+	key, err := r.Cookie("session")
+	if err != nil || key == nil {
+		return err
+	}
+
+	exists, err := redis.Bool(conn.Do("exists", key.Value))
 	if err != nil {
 		return err
 	}
-	if !set {
-		return errors.New("session already has a user")
+	if !exists {
+		return ErrSessionNotExist
+	}
+
+	setUser, err := redis.Bool(conn.Do("hsetnx", key.Value, "user", user))
+	if err != nil {
+		return err
+	}
+	if !setUser {
+		return ErrSessionHasUser
 	}
 
 	return nil
 }
 
-func (s *Store) Get(ctx context.Context, key Key) (sess Session, err error) {
-	var conn redis.Conn
-	conn, err = s.Pool.GetContext(ctx)
+func (s *Store) UpdateLocation(r *http.Request, location string) error {
+	conn, err := s.pool.GetContext(r.Context())
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+
+	key, err := r.Cookie("session")
+	if err != nil || key == nil {
+		return err
+	}
+
+	exists, err := redis.Bool(conn.Do("exists", key.Value))
+	if err != nil {
+		return err
+	}
+	if !exists {
+		return ErrSessionNotExist
+	}
+
+	_, err = conn.Do("hset", key.Value, "location", location)
+
+	return err
+}
+
+func (s *Store) Get(r *http.Request) (sess Session, err error) {
+	var (
+		conn redis.Conn
+		key  *http.Cookie
+	)
+	conn, err = s.pool.GetContext(r.Context())
 	if err != nil {
 		return
 	}
 	defer conn.Close()
 
+	key, err = r.Cookie("session")
+	if err != nil || key == nil {
+		return
+	}
+
 	var reply []interface{}
-	reply, err = redis.Values(conn.Do("hgetall", key))
+	reply, err = redis.Values(conn.Do("hgetall", key.Value))
 	if err != nil {
 		return
 	}
@@ -127,7 +202,7 @@ func (s *Store) Get(ctx context.Context, key Key) (sess Session, err error) {
 	}
 
 	var ttl int
-	ttl, err = redis.Int(conn.Do("ttl", key))
+	ttl, err = redis.Int(conn.Do("ttl", key.Value))
 	if err != nil {
 		return
 	}
@@ -142,7 +217,7 @@ func (s *Store) HasSession(r *http.Request) (exists bool, err error) {
 		return false, nil
 	}
 
-	conn, err := s.Pool.GetContext(r.Context())
+	conn, err := s.pool.GetContext(r.Context())
 	if err != nil {
 		return false, err
 	}
@@ -156,7 +231,6 @@ func (s *Store) IsLoggedIn(r *http.Request) (loggedIn bool, username string, err
 	var (
 		cookie *http.Cookie
 		conn   redis.Conn
-		valid  bool
 	)
 
 	cookie, err = r.Cookie("session")
@@ -164,46 +238,17 @@ func (s *Store) IsLoggedIn(r *http.Request) (loggedIn bool, username string, err
 		return
 	}
 
-	conn, err = s.Pool.GetContext(r.Context())
+	conn, err = s.pool.GetContext(r.Context())
 	if err != nil {
 		return
 	}
 	defer conn.Close()
 
-	err = conn.Send("exists", cookie.Value)
+	username, err = redis.String(conn.Do("hget", cookie.Value, "user"))
 	if err != nil {
 		return
 	}
 
-	err = conn.Send("hexists", cookie.Value, "user")
-	if err != nil {
-		return
-	}
-
-	err = conn.Send("hget", cookie.Value, "user")
-	if err != nil {
-		return
-	}
-
-	err = conn.Flush()
-	if err != nil {
-		return
-	}
-
-	valid, err = redis.Bool(conn.Receive())
-	if err != nil {
-		return
-	}
-	if !valid {
-		err = errors.New("session does not exist")
-		return
-	}
-
-	loggedIn, err = redis.Bool(conn.Receive())
-	if err != nil || !loggedIn {
-		return
-	}
-
-	username, err = redis.String(conn.Receive())
+	loggedIn = username != ""
 	return
 }

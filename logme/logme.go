@@ -31,7 +31,7 @@ func Init(logsDir string) error {
 
 	info = log.New(logFile, "[INFO] ", log.LstdFlags)
 	warn = log.New(io.MultiWriter(logFile, os.Stderr), "[WARN] ", log.LstdFlags)
-	errs = log.New(io.MultiWriter(logFile, os.Stderr), "[ERROR] ", log.LstdFlags|log.Llongfile)
+	errs = log.New(io.MultiWriter(logFile, os.Stderr), "[ERROR] ", log.LstdFlags|log.Lshortfile)
 	return nil
 }
 
