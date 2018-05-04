@@ -1,17 +1,16 @@
 <!doctype html>
-<html>
+<html lang="en">
 <head>
-    <meta charset="utf-8">
-    <title>Home</title>
-    <link rel="stylesheet" href="/style/main.css">
+    {{ template "templates/meta" }}
 </head>
 <body>
 <header>
-    <h1>Admin Dashboard</h1>
+    {{ template "templates/header" }}
 </header>
 
 <main>
-    <form action="/admin/dashboard" method="get">
+    <h2>Visits</h2>
+    <form action="/admin/visits" method="get">
         <div>
             <label for="start">Start:</label>
             <input id="start" type="datetime-local">
@@ -23,7 +22,7 @@
 </main>
 
 <footer>
-
+    {{ template "templates/footer" }}
 </footer>
 </body>
 </html>

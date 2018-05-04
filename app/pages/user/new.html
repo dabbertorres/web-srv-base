@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    {{ template "templates/meta" }}
+</head>
+<body>
+<header>
+    {{ template "templates/header" }}
+</header>
+
+<main>
+    <form action="/user/new" method="post">
+        <input class="row" type="text" placeholder="Username" id="username" name="username">
+        <input class="row" type="password" placeholder="Password" id="password" name="password">
+        <input class="row" type="password" placeholder="Confirm Password" id="passwordConfirm" name="passwordConfirm">
+        <button class="row" type="submit">Login</button>
+    </form>
+</main>
+
+<footer>
+    {{ template "templates/footer" }}
+</footer>
+</body>
+</html>

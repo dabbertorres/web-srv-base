@@ -9,9 +9,9 @@ import (
 	"net/http"
 	"time"
 
-	"webServer/logme"
-
 	"github.com/gomodule/redigo/redis"
+
+	"webServer/logme"
 )
 
 var (

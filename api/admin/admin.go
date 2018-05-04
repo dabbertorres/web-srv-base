@@ -18,7 +18,7 @@ var (
 	ErrNoSession   = errors.New("user does not have a session")
 )
 
-func CheckLoggedIn(r *http.Request, dbConn *sql.Conn, session dialogue.Conn) (err error) {
+func checkLoggedIn(r *http.Request, dbConn *sql.Conn, session dialogue.Conn) (err error) {
 	var (
 		username string
 		valid    bool
@@ -37,7 +37,7 @@ func CheckLoggedIn(r *http.Request, dbConn *sql.Conn, session dialogue.Conn) (er
 		return
 	}
 
-	err = dbConn.QueryRowContext(r.Context(), "select admin, enabled from users where name = $1", username).Scan(&admin, &enabled)
+	err = dbConn.QueryRowContext(r.Context(), "select admin, enabled from users where name = ?", username).Scan(&admin, &enabled)
 	if err != nil {
 		err = fmt.Errorf("checking if user is an admin: %v", err)
 		return
@@ -55,7 +55,7 @@ func CheckLoggedIn(r *http.Request, dbConn *sql.Conn, session dialogue.Conn) (er
 	return
 }
 
-func LogIn(r *http.Request, dbConn *sql.Conn, session dialogue.Conn) (err error) {
+func logIn(r *http.Request, dbConn *sql.Conn, session dialogue.Conn) (err error) {
 	err = r.ParseForm()
 	if err != nil {
 		return

@@ -12,6 +12,7 @@ import (
 	"webServer/dialogue"
 	"webServer/how"
 	"webServer/logme"
+	"webServer/tmpl"
 )
 
 func main() {
@@ -80,6 +81,13 @@ func main() {
 
 	router := mux.NewRouter().Host(cfg.Hostname).Subrouter()
 
+	err = tmpl.Load("app/templates", "app/pages")
+	if err != nil {
+		logme.Err().Println("Loading templates and pages:", err)
+		exitCode = 1
+		return
+	}
+
 	RegisterRoutes(router, db, sessions)
 
 	srv := &http.Server{
@@ -91,7 +99,7 @@ func main() {
 
 	// run...
 
-	// serve http for TLS SNI challenges and such.
+	// serve http for TLS SNI challenges and redirection to https
 	go func() {
 		err := insecureSrv.ListenAndServe()
 		if err != nil && err != http.ErrServerClosed {

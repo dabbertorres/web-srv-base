@@ -21,13 +21,21 @@ func Visit(getDB api.GetDB, getSess api.GetSession) mux.MiddlewareFunc {
 
 			sess, err := getSess(r)
 			if err != nil {
-				logme.Warn().Println("obtaining session handle:", err)
+				logme.Warn().Println("obtaining session connection:", err)
 				return
 			}
+			defer sess.Close()
 
 			_, username, err := sess.IsLoggedIn()
 			if err != nil {
 				logme.Warn().Println("obtaining session user:", err)
+			}
+
+			queryParams := r.URL.Query()
+			params := bytes.NewBuffer(nil)
+			err = json.NewEncoder(params).Encode(queryParams)
+			if err != nil {
+				logme.Warn().Println("json encoding params:", err)
 			}
 
 			visit := db.Visit{
@@ -37,32 +45,20 @@ func Visit(getDB api.GetDB, getSess api.GetSession) mux.MiddlewareFunc {
 				IP:        r.RemoteAddr,
 				UserAgent: r.UserAgent(),
 				Path:      r.RequestURI,
+				Method:    r.Method,
+				Params:    params.String(),
 			}
-
-			if r.Method == http.MethodGet {
-				visit.Action = db.MethodGet
-			} else if r.Method == http.MethodPost {
-				visit.Action = db.MethodPost
-			}
-
-			r.ParseForm()
-			params := bytes.NewBuffer(nil)
-			err = json.NewEncoder(params).Encode(r.Form)
-			if err != nil {
-				logme.Warn().Println("json encoding params:", err)
-			}
-			visit.Params = params.String()
 
 			conn, err := getDB(r.Context())
 			if err != nil {
-				logme.Warn().Println("visit middleware:", err)
+				logme.Warn().Println("obtaining DB connection:", err)
 				return
 			}
 			defer conn.Close()
 
 			_, err = conn.ExecContext(r.Context(),
 				"insert into visits (user, time, ip, userAgent, path, action, params) values (?, ?, ?, ?, ?, ?, ?)",
-				visit.User, visit.Time, visit.IP, visit.UserAgent, visit.Path, visit.Action, visit.Params)
+				visit.User, visit.Time, visit.IP, visit.UserAgent, visit.Path, visit.Method, visit.Params)
 			if err != nil {
 				logme.Warn().Println("writing visit to db:", err)
 			}

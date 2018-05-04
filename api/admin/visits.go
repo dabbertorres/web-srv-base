@@ -7,8 +7,6 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/gorilla/mux"
-
 	"webServer/api"
 	"webServer/api/db"
 	"webServer/logme"
@@ -19,68 +17,73 @@ const (
 	reqTimeLayout = "2006-01-02T15:04Z0700"
 )
 
-func Visits(r *mux.Route, getDB api.GetDB, getSession api.GetSession) {
-	r.Methods(http.MethodGet).Path("/visits").HandlerFunc(
-		func(w http.ResponseWriter, r *http.Request) {
-			dbConn, err := getDB(r.Context())
-			if err != nil {
-				api.Log(logme.Err(), r, "getting DB connection: "+err.Error())
+func Visits(getDB api.GetDB, getSession api.GetSession) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		dbConn, err := getDB(r.Context())
+		if err != nil {
+			api.Log(logme.Err(), r, "getting DB connection: "+err.Error())
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		defer dbConn.Close()
+
+		sess, err := getSession(r)
+		if err != nil {
+			api.Log(logme.Err(), r, "getting Session connection: "+err.Error())
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		defer sess.Close()
+
+		err = checkLoggedIn(r, dbConn, sess)
+		if err != nil {
+			if err == ErrNotLoggedIn || err == ErrNotAdmin || err == ErrDisabled {
+				w.WriteHeader(http.StatusUnauthorized)
+			} else {
 				w.WriteHeader(http.StatusInternalServerError)
-				return
-			}
-			defer dbConn.Close()
-
-			sess, err := getSession(r)
-
-			err = CheckLoggedIn(r, dbConn, sess)
-			if err != nil {
-				if err == ErrNotLoggedIn || err == ErrNotAdmin || err == ErrDisabled {
-					w.WriteHeader(http.StatusUnauthorized)
-				} else {
-					w.WriteHeader(http.StatusInternalServerError)
-				}
-
-				api.Log(logme.Warn(), r, err.Error())
-				return
 			}
 
-			start, end, loc, err := visitsParseTimes(r)
-			if err != nil {
-				api.Log(logme.Err(), r, err.Error())
-				w.WriteHeader(http.StatusBadRequest)
-				return
-			}
+			api.Log(logme.Warn(), r, err.Error())
+			return
+		}
 
-			rows, err := dbConn.QueryContext(r.Context(), "select * from visits where time between $1 and $2", start, end)
-			if err != nil {
-				api.Log(logme.Err(), r, err.Error())
-				w.WriteHeader(http.StatusInternalServerError)
-				return
-			}
+		start, end, loc, err := visitsParseTimes(r)
+		if err != nil {
+			api.Log(logme.Err(), r, err.Error())
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
 
-			var (
-				results []db.Visit
-				v       db.Visit
-			)
-			for rows.Next() {
-				rows.Scan(&v.User, &v.Time, &v.IP, &v.UserAgent, &v.Path, &v.Action, &v.Params)
-				v.Time = v.Time.In(loc)
-				results = append(results, v)
-			}
+		rows, err := dbConn.QueryContext(r.Context(), "select * from visits where time between ? and ?", start, end)
+		if err != nil {
+			api.Log(logme.Err(), r, err.Error())
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
 
-			if rows.Err() != nil {
-				api.Log(logme.Err(), r, rows.Err().Error())
-				w.WriteHeader(http.StatusInternalServerError)
-				return
-			}
+		var (
+			results []db.Visit
+			v       db.Visit
+		)
+		for rows.Next() {
+			rows.Scan(&v.User, &v.Time, &v.IP, &v.UserAgent, &v.Path, &v.Method, &v.Params)
+			v.Time = v.Time.In(loc)
+			results = append(results, v)
+		}
 
-			err = json.NewEncoder(w).Encode(results)
-			if err != nil {
-				api.Log(logme.Err(), r, err.Error())
-				w.WriteHeader(http.StatusInternalServerError)
-				return
-			}
-		})
+		if rows.Err() != nil {
+			api.Log(logme.Err(), r, rows.Err().Error())
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+
+		err = json.NewEncoder(w).Encode(results)
+		if err != nil {
+			api.Log(logme.Err(), r, err.Error())
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+	}
 }
 
 func visitsParseTimes(r *http.Request) (start, end time.Time, loc *time.Location, err error) {

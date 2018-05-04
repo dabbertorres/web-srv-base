@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"io/ioutil"
-	"net/http"
 	"os"
 	"os/signal"
 	"strings"
@@ -12,13 +11,9 @@ import (
 
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/gomodule/redigo/redis"
-	"github.com/gorilla/mux"
 	"golang.org/x/crypto/acme/autocert"
 
-	"webServer/api/admin"
-	"webServer/dialogue"
 	"webServer/how"
-	"webServer/middleware"
 )
 
 type Interrupt struct {
@@ -117,34 +112,4 @@ func LetsEncryptSetup(cfg *Config) (man *autocert.Manager, err error) {
 		}
 	}
 	return
-}
-
-func RegisterRoutes(r *mux.Router, db *sql.DB, sessions *dialogue.Store) {
-	var (
-		getDB   = func(ctx context.Context) (*sql.Conn, error) { return db.Conn(ctx) }
-		getSess = func(r *http.Request) (dialogue.Conn, error) { return sessions.Open(r) }
-	)
-
-	r.NotFoundHandler = staticFileHandler("app/404.html")
-
-	r.Use(sessions.Middleware)
-	r.Use(middleware.Visit(getDB, getSess))
-
-	// main
-	r.Path("/").
-		Methods("GET").
-		Handler(staticFileHandler("app/index.html"))
-
-	// admin
-	adminR := r.Path("/admin").Subrouter()
-
-	admin.Visits(adminR.NewRoute(), getDB, getSess)
-
-	// TODO admin/dashboard.html
-	// TODO admin/login.html
-
-	// style
-	r.Path("/style/main.css").
-		Methods("GET").
-		Handler(staticFileHandler("app/style/main.css"))
 }
