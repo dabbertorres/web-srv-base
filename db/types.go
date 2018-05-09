@@ -7,6 +7,7 @@ import (
 type (
 	User struct {
 		Name           string `json:"name"`
+		Email          string `json:"email"`
 		HashedPassword []byte `json:"hashedPassword"`
 		Admin          bool   `json:"admin"`
 		Enabled        bool   `json:"enabled"`

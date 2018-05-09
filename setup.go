@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"database/sql"
 	"io/ioutil"
 	"os"
 	"os/signal"
@@ -10,7 +9,6 @@ import (
 	"time"
 
 	_ "github.com/go-sql-driver/mysql"
-	"github.com/gomodule/redigo/redis"
 	"golang.org/x/crypto/acme/autocert"
 
 	"webServer/how"
@@ -53,49 +51,6 @@ func LoadConfig() (cfg Config, redisPass string, err error) {
 	var redisPassBuf []byte
 	redisPassBuf, err = ioutil.ReadFile(cfg.RedisPassFile)
 	redisPass = strings.TrimSpace(string(redisPassBuf))
-	return
-}
-
-func SetupRedisPool(cfg *Config, redisPassword string) (pool *redis.Pool, err error) {
-	pool = &redis.Pool{
-		Dial: func() (conn redis.Conn, err error) {
-			return redis.Dial("tcp", cfg.RedisUrl, redis.DialReadTimeout(15*time.Second), redis.DialWriteTimeout(15*time.Second), redis.DialPassword(redisPassword))
-		},
-		TestOnBorrow: func(conn redis.Conn, t time.Time) (err error) {
-			_, err = conn.Do("ping")
-			return
-		},
-		MaxIdle:     3,
-		IdleTimeout: 5 * time.Minute,
-	}
-
-	// make sure we have a valid connection
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-	defer cancel()
-
-	var testConn redis.Conn
-	testConn, err = pool.GetContext(ctx)
-	if err != nil {
-		pool.Close()
-		pool = nil
-	} else {
-		testConn.Close()
-	}
-
-	return
-}
-
-func SetupDB(cfg *Config) (db *sql.DB, err error) {
-	db, err = sql.Open(cfg.DBDriver, cfg.DBAddr+"?parseTime=true")
-	if err != nil {
-		return
-	}
-
-	err = db.Ping()
-	if err != nil {
-		db.Close()
-	}
-
 	return
 }
 

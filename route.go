@@ -1,8 +1,6 @@
 package main
 
 import (
-	"context"
-	"database/sql"
 	"io/ioutil"
 	"net/http"
 	"os"
@@ -11,14 +9,16 @@ import (
 
 	"github.com/gorilla/mux"
 
-	"webServer/api/admin"
+	"webServer/model/admin"
+	"webServer/model/user"
+	"webServer/db"
 	"webServer/dialogue"
 	"webServer/logme"
-	"webServer/middleware"
 	"webServer/tmpl"
+	"webServer/visitors"
 )
 
-func pageHandler(path string, data func(r *http.Request) interface{}) http.HandlerFunc {
+func pageHandler(path string, data func(r *http.Request) tmpl.Data) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		err := tmpl.Build(path, w, data(r))
 		if err != nil {
@@ -38,23 +38,16 @@ func staticFileHandler(filepath string) http.HandlerFunc {
 	}
 }
 
-func RegisterRoutes(router *mux.Router, db *sql.DB, sessions *dialogue.Store) {
-	var (
-		getDB   = func(ctx context.Context) (*sql.Conn, error) { return db.Conn(ctx) }
-		getSess = func(r *http.Request) (dialogue.Conn, error) { return sessions.Open(r) }
-	)
-
+func RegisterRoutes(router *mux.Router) {
 	router.NotFoundHandler = staticFileHandler("app/404.html")
 
-	router.Use(sessions.Middleware)
-	router.Use(middleware.Visit(getDB, getSess))
+	router.Use(dialogue.Middleware)
+	router.Use(db.Middleware)
+	router.Use(visitors.Middleware)
 
-	// api paths
-	adminR := router.Path("/admin").Subrouter()
-
-	adminR.Path("/visits").
-		Methods(http.MethodGet).
-		HandlerFunc(admin.Visits(getDB, getSess))
+	// model paths
+	adminRoutes(router.Path("/admin").Subrouter())
+	userRoutes(router.Path("/user").Subrouter())
 
 	// page paths
 	pagesR := router.Methods(http.MethodGet).Subrouter()
@@ -83,4 +76,24 @@ func RegisterRoutes(router *mux.Router, db *sql.DB, sessions *dialogue.Store) {
 			return nil
 		})
 	}
+}
+
+func adminRoutes(router *mux.Router) {
+	router.Use(admin.Middleware)
+
+	router.Path("/login").
+		Methods(http.MethodPost).
+		HandlerFunc(admin.Login)
+
+	router.Path("/visits").
+		Methods(http.MethodGet).
+		HandlerFunc(admin.Visits)
+}
+
+func userRoutes(router *mux.Router) {
+	router.Use(user.Middleware)
+
+	router.Path("/login").
+		Methods(http.MethodPost).
+		HandlerFunc(user.Login)
 }

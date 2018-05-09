@@ -52,7 +52,11 @@ func Load(templatesPath, pagesPath string) (err error) {
 	return
 }
 
-func Build(page string, w io.Writer, data interface{}) error {
+type Data interface {
+	Title() string
+}
+
+func Build(page string, w io.Writer, data Data) error {
 	return templates.ExecuteTemplate(w, filepath.Base(page), data)
 }
 

@@ -9,6 +9,7 @@ import (
 
 	"github.com/gorilla/mux"
 
+	"webServer/db"
 	"webServer/dialogue"
 	"webServer/how"
 	"webServer/logme"
@@ -42,17 +43,15 @@ func main() {
 
 	// state setup...
 
-	redisPool, err := SetupRedisPool(&cfg, redisPass)
+	err = dialogue.Open(cfg.RedisUrl, redisPass, time.Duration(cfg.SessionTTL)*time.Second)
 	if err != nil {
 		logme.Err().Println("Connecting to Redis:", err)
 		exitCode = 1
 		return
 	}
-	defer redisPool.Close()
+	defer dialogue.Close()
 
-	sessions := dialogue.NewStore(time.Duration(cfg.SessionTTL)*time.Second, redisPool)
-
-	db, err := SetupDB(&cfg)
+	err = db.Open(cfg.DBAddr, cfg.DBDriver)
 	if err != nil {
 		logme.Err().Println("Connecting to DB:", err)
 		exitCode = 1
@@ -88,7 +87,7 @@ func main() {
 		return
 	}
 
-	RegisterRoutes(router, db, sessions)
+	RegisterRoutes(router)
 
 	srv := &http.Server{
 		Addr:      ":https",

@@ -1,11 +1,11 @@
 <!doctype html>
 <html lang="en">
 <head>
-    {{ template "templates/meta" }}
+    {{ template "templates/meta" . }}
 </head>
 <body>
 <header>
-    {{ template "templates/header" }}
+    {{ template "templates/header" . }}
 </header>
 
 <main>
@@ -22,7 +22,7 @@
 </main>
 
 <footer>
-    {{ template "templates/footer" }}
+    {{ template "templates/footer" . }}
 </footer>
 </body>
 </html>

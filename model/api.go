@@ -1,17 +1,9 @@
-package api
+package model
 
 import (
-	"context"
-	"database/sql"
 	"log"
 	"net/http"
 
-	"webServer/dialogue"
-)
-
-type (
-	GetDB func(context.Context) (*sql.Conn, error)
-	GetSession func(r *http.Request) (dialogue.Conn, error)
 )
 
 func Log(logger *log.Logger, r *http.Request, why string) {

@@ -4,6 +4,7 @@ use web;
 create table if not exists users
 (
     name     varchar(32) primary key,
+    email    varchar(64) unique not null,
     password binary(60) not null,
     admin    bool       not null,
     enabled  bool       not null
