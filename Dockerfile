@@ -2,7 +2,7 @@ FROM alpine:3.7 as certs
 
 RUN apk update && apk add ca-certificates
 
-FROM alpine:3.7
+FROM scratch
 
 EXPOSE 80/tcp
 EXPOSE 443/tcp
