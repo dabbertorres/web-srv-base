@@ -18,5 +18,6 @@ webServer
 # vendored files
 vendor/
 
-# deployables
-deployables.zip
+# config files
+cfg/*.conf
+

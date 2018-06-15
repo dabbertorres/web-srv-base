@@ -5,7 +5,7 @@ services:
     image: dabbertorres/web-server-base:latest
     depends_on:
       - db
-      - redis
+      - sessions
     ports:
       - "80:80"
       - "443:443"
@@ -22,13 +22,10 @@ services:
         source: certs
         target: /certs
   db:
-    image: mariadb:10.2
+    image: dabbertorres/web-server-db:latest
     environment:
       - MYSQL_DATABASE=web
       - MYSQL_ROOT_PASSWORD_FILE=/run/secrets/db-password
-    configs:
-      - source: db-init
-        target: /docker-entrypoint-initdb.d/init.sql
     networks:
       - webnet
     secrets:
@@ -47,9 +44,7 @@ services:
 
 configs:
   web-config:
-    file: ./cfg/web.conf
-  db-init:
-    file: ./cfg/db-init.sql
+    external: true
 
 networks:
   webnet:

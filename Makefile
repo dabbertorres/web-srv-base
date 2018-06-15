@@ -1,11 +1,7 @@
-ZIP_TOOL := 7z
-ZIP_ARGS := a
-
 SRC_FILES := $(shell find . -type f -name "*.go")
 APP_FILES := $(shell find ./app -type f)
-CFG_FILES := ./cfg/db-init.sql ./cfg/web.conf
 
-all: webServer webServer-image deployables.zip
+all: webServer webServer-image db-image
 
 webServer: $(SRC_FILES)
 	GOOS=linux go build -tags netgo
@@ -14,10 +10,11 @@ webServer-image: webServer $(APP_FILES) Dockerfile
 	docker build -t dabbertorres/web-server-base:latest .
 	docker push dabbertorres/web-server-base:latest
 
-deployables.zip: docker-compose.yml $(CFG_FILES)
-	$(ZIP_TOOL) $(ZIP_ARGS) $@ $?
+db-image: Dockerfile.db cfg/db-init.sql
+	docker build -t dabbertorres/web-server-db:latest .
+	docker push dabbertorres/web-server-db:latest
 
 clean:
 	rm webServer
 
-.PHONY: all webServer-image clean
+.PHONY: all webServer-image db-image clean
