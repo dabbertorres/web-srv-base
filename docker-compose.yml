@@ -5,6 +5,7 @@ services:
     image: dabbertorres/web-server-base:latest
     depends_on:
       - db
+      - mail
       - sessions
     ports:
       - "80:80"
@@ -34,6 +35,17 @@ services:
       - type: volume
         source: db-data
         target: /var/lib/mysql
+  mail:
+    image: dabbertorres/email-send-srv:latest
+    configs:
+      - source: mail-config
+        target: /mail.conf
+    networks:
+      - webnet
+    volumes:
+      - type: volume
+        source: certs
+        target: /certs
   sessions:
     image: redis:4.0-alpine
     command: sh -c "redis-server --requirepass `cat /run/secrets/redis-password`"
@@ -44,6 +56,8 @@ services:
 
 configs:
   web-config:
+    external: true
+  mail-config:
     external: true
 
 networks:

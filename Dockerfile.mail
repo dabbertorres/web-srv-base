@@ -1,0 +1,15 @@
+FROM alpine:3.8
+
+RUN apk update \
+    && apk upgrade \
+    && apk add postfix \
+    && echo 'myorigin = $mydomain' >> /etc/postfix/main.cf \
+    && echo 'relayhost = ' >> /etc/postfix/main.cf \
+    && echo 'inet_interfaces = all' >> /etc/postfix/main.cf \
+    && echo 'mydestination = ' >> /etc/postfix/main.cf \
+    && echo 'smtp_tls_key_file = $smtp_tls_cert_file' >> /etc/postfix/main.cf \
+    && echo 'smtp_tls_security_level = encrypt' >> /etc/postfix/main.cf
+
+COPY ./mail-docker-entrypoint.sh /docker-entrypoint.sh
+ENTRYPOINT ["/docker-entrypoint.sh"]
+CMD ["postfix", "start-fg"]
