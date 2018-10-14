@@ -6,27 +6,24 @@ import (
 	"net/http"
 	"time"
 
-	"webServer/db"
-	"webServer/dialogue"
-	"webServer/logme"
+	"github.com/dabbertorres/web-srv-base/db"
+	"github.com/dabbertorres/web-srv-base/dialogue"
+	"github.com/dabbertorres/web-srv-base/logme"
 )
 
 func Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		sess, err := dialogue.Get(r)
-		if err != nil {
-			logme.Warn().Println("obtaining session:", err)
-		}
+		_, user := dialogue.IsLoggedIn(r)
 
 		queryParams := r.URL.Query()
 		params := bytes.NewBuffer(nil)
-		err = json.NewEncoder(params).Encode(queryParams)
+		err := json.NewEncoder(params).Encode(queryParams)
 		if err != nil {
 			logme.Warn().Println("json encoding params:", err)
 		}
 
 		visit := &db.Visit{
-			User:      sess.User,
+			User:      user,
 			Time:      time.Now().UTC(),
 			IP:        r.RemoteAddr,
 			UserAgent: r.UserAgent(),

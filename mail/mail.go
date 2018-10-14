@@ -2,6 +2,7 @@ package mail
 
 import (
 	"bytes"
+    "errors"
 	htmlTemplate "html/template"
 	"io"
 	"net/smtp"
@@ -29,6 +30,8 @@ type headerData struct {
 }
 
 var (
+    NoTemplateError = errors.New("no such template loaded")
+
 	mutex     sync.RWMutex
 	templates = make(map[string]template)
 
@@ -77,7 +80,10 @@ func Send(templateName, to string, data interface{}) (err error) {
 
 	mutex.RLock()
 	defer mutex.RUnlock()
-	t := templates[templateName]
+	t, ok := templates[templateName]
+    if !ok {
+        return NoTemplateError
+    }
 
 	err = headers.Execute(buf, &headerData{
 		From:    serverFromAddr,

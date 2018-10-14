@@ -7,9 +7,9 @@ import (
 	"net/http"
 	"time"
 
-	"webServer/model"
-	"webServer/db"
-	"webServer/logme"
+	"github.com/dabbertorres/web-srv-base/db"
+	"github.com/dabbertorres/web-srv-base/logme"
+	"github.com/dabbertorres/web-srv-base/model"
 )
 
 const (

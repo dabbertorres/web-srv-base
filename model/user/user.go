@@ -1,29 +1,24 @@
 package user
 
 import (
+	"fmt"
 	"net/http"
 
-	"webServer/db"
-	"webServer/dialogue"
-	"webServer/logme"
+	"github.com/dabbertorres/web-srv-base/db"
+	"github.com/dabbertorres/web-srv-base/dialogue"
+	"github.com/dabbertorres/web-srv-base/logme"
 )
 
 func Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		loggedIn, _, err := dialogue.IsLoggedIn(r)
-		if err != nil {
-			logme.Err().Println("checking log-in status:", err)
-			w.WriteHeader(http.StatusInternalServerError)
-			return
-		}
-
+		loggedIn, _ := dialogue.IsLoggedIn(r)
 		if !loggedIn {
-			err = dialogue.SaveLocation(r)
+			err := dialogue.SaveLocation(r)
 			if err != nil {
 				logme.Warn().Println("saving location for session:", err)
 			}
 
-			http.Redirect(w, r, "/user/login", http.StatusFound)
+			http.Redirect(w, r, "/login", http.StatusFound)
 			return
 		}
 
@@ -31,43 +26,35 @@ func Middleware(next http.Handler) http.Handler {
 	})
 }
 
-func Login(w http.ResponseWriter, r *http.Request) {
+func New(w http.ResponseWriter, r *http.Request) {
 	err := r.ParseForm()
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		logme.Err().Println("parsing user login form:", err)
+		// TODO nicer "failed account creation"
 		return
 	}
 
-	username := r.Form.Get("username")
-	password := r.Form.Get("password")
+	var (
+		username        = r.Form.Get("username")
+		password        = r.Form.Get("password")
+		passwordConfirm = r.Form.Get("passwordConfirm")
+	)
 
-	canLogin, err := db.UserCanLogin(r.Context(), username, password)
-	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		logme.Err().Println("checking if user can login:", err)
-		return
-	}
-
-	if !canLogin {
+	if password != passwordConfirm {
 		w.WriteHeader(http.StatusBadRequest)
-		logme.Warn().Println("failed login attempt for:", username)
+		// TODO nicer "failed account creation - passwords didn't match"
 		return
 	}
 
-	err = dialogue.Login(r, username)
+	err = db.UserNew(r.Context(), username, password, false)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
-		logme.Err().Println("assigning user to session:", err)
+		logme.Err().Println("creating new user:", err)
 		return
 	}
 
-	lastLocation, err := dialogue.GetLastLocation(r)
-	if err != nil {
-		// this doesn't impact usage, so not an error - will redirect them to the home page
-		logme.Warn().Println("getting user's last location:", err)
-	}
+	// TODO email confirmation of account and all that fun stuff
 
-	http.Redirect(w, r, lastLocation, http.StatusFound)
-	return
+	fmt.Fprintf(w, "Welcome, %s!", username)
 }

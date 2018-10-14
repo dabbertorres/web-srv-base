@@ -8,7 +8,7 @@ import (
 
 	_ "github.com/go-sql-driver/mysql"
 
-	"webServer/logme"
+	"github.com/dabbertorres/web-srv-base/logme"
 )
 
 type connKey struct{}
