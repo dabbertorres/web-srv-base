@@ -1,5 +1,5 @@
 # web-srv-base
-basic web server baseline - Written in Go, using Redis and MariaDB
+basic web server setup to build from - from scratch, in Go
 
 # [how to run](#how-to-run)
 1. Setup your target machine to run Docker.
