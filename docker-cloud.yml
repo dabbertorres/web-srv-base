@@ -6,22 +6,23 @@ services:
     depends_on:
       - db
       - mail
-      - sessions
     ports:
       - "80:80"
       - "443:443"
     configs:
-      - source: web-config
+      - source: web-srv-config
         target: /web.conf
     networks:
       - webnet
     secrets:
-      - db-password
-      - redis-password
+      - web-srv-db-password
     volumes:
       - type: volume
         source: certs
         target: /certs
+      - type: volume
+        source: sessions
+        target: /sessions
   db:
     image: dabbertorres/web-server-db:latest
     environment:
@@ -30,7 +31,7 @@ services:
     networks:
       - webnet
     secrets:
-      - db-password
+      - web-srv-db-password
     volumes:
       - type: volume
         source: db-data
@@ -38,7 +39,7 @@ services:
   mail:
     image: dabbertorres/email-send-srv:latest
     configs:
-      - source: mail-config
+      - source: web-srv-mail-config
         target: /mail.conf
     networks:
       - webnet
@@ -46,29 +47,21 @@ services:
       - type: volume
         source: certs
         target: /certs
-  sessions:
-    image: redis:4.0-alpine
-    command: sh -c "redis-server --requirepass `cat /run/secrets/redis-password`"
-    networks:
-      - webnet
-    secrets:
-      - redis-password
 
 configs:
-  web-config:
+  web-srv-config:
     external: true
-  mail-config:
+  web-srv-mail-config:
     external: true
 
 networks:
   webnet:
 
 secrets:
-  db-password:
-    external: true
-  redis-password:
+  web-srv-db-password:
     external: true
 
 volumes:
   db-data:
+  sessions:
   certs:
