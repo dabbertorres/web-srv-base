@@ -3,28 +3,35 @@ package tmpl
 import (
 	"html/template"
 	"io"
+	"io/ioutil"
 	"os"
 	"path/filepath"
-	"io/ioutil"
 	"strings"
+
+	"github.com/dabbertorres/web-srv-base/view"
+)
+
+const (
+	PagesDir     = "pages"
+	TemplatesDir = "templates"
 )
 
 var (
 	templates *template.Template
 )
 
-func Load(templatesPath, pagesPath string) (err error) {
+func Load(appPath string) (err error) {
 	// non-nil empty template
 	templates = template.New("base").Option("missingkey=zero")
 
 	walk := func(path string, info os.FileInfo, err error) error {
 		if err == nil && info.Mode().IsRegular() && info.Size() > 0 {
-			// drop the pagesPath prefix and the file extension for use as the page name
-			relPath, _ := filepath.Rel(templatesPath, path)
+			// drop the appPath prefix and the file extension for use as the page name
+			relPath, _ := filepath.Rel(appPath, path)
 			relPath = strings.TrimSuffix(relPath, filepath.Ext(relPath))
 
-			// if we got the index page, change it's name to just "/"
-			if relPath == "/index" {
+			// if we got the index/home page, change it's name to just "/"
+			if relPath == "/index" || relPath == "/home" {
 				relPath = "/"
 			}
 
@@ -39,12 +46,12 @@ func Load(templatesPath, pagesPath string) (err error) {
 		return err
 	}
 
-	err = filepath.Walk(templatesPath, walk)
+	err = filepath.Walk(filepath.Join(appPath, TemplatesDir), walk)
 	if err != nil {
 		return
 	}
 
-	err = filepath.Walk(pagesPath, walk)
+	err = filepath.Walk(filepath.Join(appPath, PagesDir), walk)
 	if err != nil {
 		return
 	}
@@ -52,12 +59,8 @@ func Load(templatesPath, pagesPath string) (err error) {
 	return
 }
 
-type Data interface {
-	Title() string
-}
-
-func Build(page string, w io.Writer, data Data) error {
-	return templates.ExecuteTemplate(w, filepath.Base(page), data)
+func Build(page string, w io.Writer, data view.Data) error {
+	return templates.ExecuteTemplate(w, page, data)
 }
 
 func Pages() <-chan string {

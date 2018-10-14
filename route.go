@@ -9,19 +9,36 @@ import (
 
 	"github.com/gorilla/mux"
 
-	"webServer/model/admin"
-	"webServer/model/user"
-	"webServer/db"
-	"webServer/dialogue"
-	"webServer/logme"
-	"webServer/tmpl"
-	"webServer/visitors"
+	"github.com/dabbertorres/web-srv-base/db"
+	"github.com/dabbertorres/web-srv-base/dialogue"
+	"github.com/dabbertorres/web-srv-base/logme"
+	"github.com/dabbertorres/web-srv-base/model"
+	adminapi "github.com/dabbertorres/web-srv-base/model/admin"
+	userapi "github.com/dabbertorres/web-srv-base/model/user"
+	"github.com/dabbertorres/web-srv-base/tmpl"
+	"github.com/dabbertorres/web-srv-base/view"
+	"github.com/dabbertorres/web-srv-base/view/admin"
+	"github.com/dabbertorres/web-srv-base/view/user"
+	"github.com/dabbertorres/web-srv-base/visitors"
 )
 
-func pageHandler(path string, data func(r *http.Request) tmpl.Data) http.HandlerFunc {
+func pageHandler(templateName string, builder view.Builder) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		err := tmpl.Build(path, w, data(r))
+		data, err := builder(r)
 		if err != nil {
+			logme.Err().Printf("Serving template '%s' for '%s': %v\n", templateName, r.RequestURI, err)
+
+			if buildErr, ok := err.(view.Error); ok {
+				w.WriteHeader(buildErr.Status)
+			} else {
+				w.WriteHeader(http.StatusInternalServerError)
+			}
+			return
+		}
+
+		err = tmpl.Build(templateName, w, data)
+		if err != nil {
+			logme.Err().Printf("Building template '%s' for '%s': %v\n", templateName, r.RequestURI, err)
 			w.WriteHeader(http.StatusInternalServerError)
 		}
 	}
@@ -31,6 +48,7 @@ func staticFileHandler(filepath string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		buf, err := ioutil.ReadFile(filepath)
 		if err != nil {
+			logme.Err().Printf("Serving static file '%s': %v\n", filepath, err)
 			w.WriteHeader(http.StatusInternalServerError)
 		} else {
 			w.Write(buf)
@@ -39,28 +57,19 @@ func staticFileHandler(filepath string) http.HandlerFunc {
 }
 
 func RegisterRoutes(router *mux.Router) {
-	router.NotFoundHandler = staticFileHandler("app/404.html")
+	router.NotFoundHandler = http.HandlerFunc(
+		func(w http.ResponseWriter, r *http.Request) {
+			err := tmpl.Build("pages/404", w, &view.NotFound{})
+			if err != nil {
+				logme.Err().Println("Serving 404 page:", err)
+			}
+			w.WriteHeader(http.StatusNotFound)
+		})
 
-	router.Use(dialogue.Middleware)
-	router.Use(db.Middleware)
-	router.Use(visitors.Middleware)
-
-	// model paths
-	adminRoutes(router.Path("/admin").Subrouter())
-	userRoutes(router.Path("/user").Subrouter())
-
-	// page paths
-	pagesR := router.Methods(http.MethodGet).Subrouter()
-
-	for path := range tmpl.Pages() {
-		// TODO uh, we need a data() function argument for pageHandler()
-		pagesR.Path(path).HandlerFunc(pageHandler(path, nil))
-	}
-
-	// static/content paths
+	// static content
 	for _, base := range []string{"app/content", "app/scripts", "app/style"} {
 		pathBase := strings.TrimPrefix(base, "app")
-		subR := router.Path(pathBase).
+		subR := router.PathPrefix(pathBase).
 			Methods(http.MethodGet).
 			Subrouter()
 
@@ -76,24 +85,68 @@ func RegisterRoutes(router *mux.Router) {
 			return nil
 		})
 	}
+
+	router.Use(dialogue.Middleware)
+	router.Use(db.Middleware)
+	router.Use(visitors.Middleware)
+
+	var (
+		adminR = router.PathPrefix("/admin").Subrouter()
+		userR  = router.PathPrefix("/user").Subrouter()
+	)
+
+	adminR.Use(adminapi.Middleware)
+	userR.Use(userapi.Middleware)
+
+	baseEndpoints(router)
+	adminEndpoints(adminR)
+	userEndpoints(userR)
+
+	loginViews(router)
+	userViews(userR)
+	adminViews(adminR)
 }
 
-func adminRoutes(router *mux.Router) {
-	router.Use(admin.Middleware)
-
+func baseEndpoints(router *mux.Router) {
 	router.Path("/login").
 		Methods(http.MethodPost).
-		HandlerFunc(admin.Login)
+		HandlerFunc(model.Login)
 
+	router.Path("/login").
+		Methods(http.MethodDelete).
+		HandlerFunc(model.Logout)
+}
+
+func adminEndpoints(router *mux.Router) {
 	router.Path("/visits").
 		Methods(http.MethodGet).
-		HandlerFunc(admin.Visits)
+		HandlerFunc(adminapi.Visits)
 }
 
-func userRoutes(router *mux.Router) {
-	router.Use(user.Middleware)
-
-	router.Path("/login").
+func userEndpoints(router *mux.Router) {
+	router.Path("/new").
 		Methods(http.MethodPost).
-		HandlerFunc(user.Login)
+		HandlerFunc(userapi.New)
+}
+
+func loginViews(router *mux.Router) {
+	router.Path("/login").
+		Methods(http.MethodGet).
+		HandlerFunc(pageHandler("pages/login", view.Login))
+}
+
+func userViews(router *mux.Router) {
+	router.Path("/profile").
+		Methods(http.MethodGet).
+		HandlerFunc(user.SelfProfile)
+
+	router.Path("/profile/{username}").
+		Methods(http.MethodGet).
+		HandlerFunc(user.Profile)
+}
+
+func adminViews(router *mux.Router) {
+	router.Path("/").
+		Methods(http.MethodGet).
+		HandlerFunc(pageHandler("pages/admin/dashboard", admin.Dashboard))
 }
