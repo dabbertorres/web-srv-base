@@ -1,27 +1,32 @@
 package main
 
 import (
+	"context"
 	"crypto/tls"
 	"net/http"
 	"os"
+	"os/signal"
 	"sync"
+	"syscall"
 	"time"
+
+	"golang.org/x/crypto/acme/autocert"
 
 	"github.com/gorilla/mux"
 
-	"webServer/db"
-	"webServer/dialogue"
-	"webServer/how"
-	"webServer/logme"
-	"webServer/tmpl"
+	"github.com/dabbertorres/how"
+	"github.com/dabbertorres/web-srv-base/db"
+	"github.com/dabbertorres/web-srv-base/dialogue"
+	"github.com/dabbertorres/web-srv-base/logme"
+	"github.com/dabbertorres/web-srv-base/tmpl"
 )
 
 func main() {
 	exitCode := 0
 	defer os.Exit(exitCode)
 
-	waitShutdown := make(chan Interrupt)
-	SetupInterruptCatch(waitShutdown, time.Second*15)
+	interrupt := make(chan os.Signal)
+	signal.Notify(interrupt, os.Interrupt, syscall.SIGTERM, syscall.SIGKILL)
 
 	err := logme.Init("logs")
 	if err != nil {
@@ -32,9 +37,9 @@ func main() {
 
 	// config...
 
-	cfg, redisPass, err := LoadConfig()
+	cfg, err := LoadConfig()
 	if err != nil {
-		if err != how.ShowingHelp {
+		if err != how.ErrShowHelp {
 			logme.Err().Println("Loading config:", err)
 		}
 		exitCode = 1
@@ -43,9 +48,9 @@ func main() {
 
 	// state setup...
 
-	err = dialogue.Open(cfg.RedisUrl, redisPass, time.Duration(cfg.SessionTTL)*time.Second)
+	err = dialogue.Open(time.Duration(cfg.SessionTTL) * time.Second)
 	if err != nil {
-		logme.Err().Println("Connecting to Redis:", err)
+		logme.Err().Println("Opening sessions file:", err)
 		exitCode = 1
 		return
 	}
@@ -59,69 +64,90 @@ func main() {
 	}
 	defer db.Close()
 
-	httpsMan, err := LetsEncryptSetup(&cfg)
-	if err != nil {
-		logme.Err().Println("Configuring Let's Encrypt:", err)
-		exitCode = 1
-		return
-	}
+	httpsMan := LetsEncryptSetup(&cfg)
 
 	// web interface...
 
-	// handle ACME requests, otherwise redirect all other traffic to the https version
-	insecureSrv := &http.Server{
-		Addr: ":http",
-		Handler: httpsMan.HTTPHandler(http.HandlerFunc(
-			func(w http.ResponseWriter, r *http.Request) {
-				http.Redirect(w, r, "https://"+r.Host+r.RequestURI, http.StatusMovedPermanently)
-			})),
-		ErrorLog: logme.Err(),
-	}
-
-	router := mux.NewRouter().Host(cfg.Hostname).Subrouter()
-
-	err = tmpl.Load("app/templates", "app/pages")
+	err = tmpl.Load("app")
 	if err != nil {
 		logme.Err().Println("Loading templates and pages:", err)
 		exitCode = 1
 		return
 	}
 
-	RegisterRoutes(router)
-
-	srv := &http.Server{
-		Addr:      ":https",
-		Handler:   router,
-		ErrorLog:  logme.Err(),
-		TLSConfig: &tls.Config{GetCertificate: httpsMan.GetCertificate},
-	}
-
 	// run...
+
+	var (
+		// handle ACME requests, otherwise redirect all other traffic to the https version
+		insecureSrv = startInsecure(httpsMan)
+		srv         = startSecure(httpsMan, &cfg)
+	)
+
+	// try to shutdown gracefully when signaled...
+
+	<-interrupt
+	cancelCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	done := shutdown(cancelCtx, insecureSrv, srv)
+
+	// wait for shutdown or timeout
+	select {
+	case <-cancelCtx.Done():
+		logme.Err().Println("Shutdown timeout")
+		exitCode = 1
+
+	case <-done:
+		exitCode = 0
+	}
+}
+
+func startInsecure(man *autocert.Manager) (srv *http.Server) {
+	srv = &http.Server{
+		Addr: ":http",
+		Handler: man.HTTPHandler(http.HandlerFunc(
+			func(w http.ResponseWriter, r *http.Request) {
+				http.Redirect(w, r, "https://"+r.Host+r.RequestURI, http.StatusMovedPermanently)
+			})),
+		ErrorLog: logme.Err(),
+	}
 
 	// serve http for TLS SNI challenges and redirection to https
 	go func() {
-		err := insecureSrv.ListenAndServe()
+		err := srv.ListenAndServe()
 		if err != nil && err != http.ErrServerClosed {
 			logme.Err().Println("Server (http) ListenAndServe():", err)
 		}
 	}()
+	return
+}
 
-	// actual server! (on https)
+func startSecure(man *autocert.Manager, cfg *Config) (srv *http.Server) {
+	router := mux.NewRouter().Host(cfg.Hostname).Subrouter()
+	RegisterRoutes(router)
+
+	srv = &http.Server{
+		Addr:      ":https",
+		Handler:   router,
+		ErrorLog:  logme.Err(),
+		TLSConfig: &tls.Config{GetCertificate: man.GetCertificate},
+	}
+
 	go func() {
 		err := srv.ListenAndServeTLS("", "")
 		if err != nil && err != http.ErrServerClosed {
 			logme.Err().Println("Server (https) ListenAndServeTLS():", err)
 		}
 	}()
+	return
+}
 
-	interrupt := <-waitShutdown
-	defer interrupt.Cancel()
-
+func shutdown(ctx context.Context, insecure, secure *http.Server) (<-chan struct{}) {
 	wait := sync.WaitGroup{}
 	wait.Add(2)
 
 	go func() {
-		err = insecureSrv.Shutdown(interrupt.Context)
+		err := insecure.Shutdown(ctx)
 		if err != nil {
 			logme.Err().Println("Server (insecure) Shutdown():", err)
 		}
@@ -129,26 +155,17 @@ func main() {
 	}()
 
 	go func() {
-		err = srv.Shutdown(interrupt.Context)
+		err := secure.Shutdown(ctx)
 		if err != nil {
 			logme.Err().Println("Server Shutdown():", err)
 		}
 		wait.Done()
 	}()
 
-	shutdownDone := make(chan struct{}, 2)
+	done := make(chan struct{})
 	go func() {
 		wait.Wait()
-		shutdownDone <- struct{}{}
+		close(done)
 	}()
-
-	// start the timeout sequence
-	select {
-	case <-interrupt.Done():
-		logme.Err().Println("Shutdown timeout")
-		exitCode = 1
-
-	case <-shutdownDone:
-		exitCode = 0
-	}
+	return done
 }

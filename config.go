@@ -5,36 +5,26 @@ const (
 	hostname  = "localhost"
 	dbDriver  = "mysql"
 	dbConn    = "/db"
-	redisUrl  = "redis"
-	certDir   = "certs/"
-	certRenew = 24 * 7
+	certRenew = 24 * 30 // LetsEncrypt recommends renewal at 30 days before expiration for their 90 day certs
 	certEmail = ""
 )
 
 type Config struct {
-	Hostname      string `how:"hostname,n,specify the hostname name the server should respond as"`
-	DBDriver      string `how:"db-driver,,specify the the database driver to use"`
-	DBAddr        string `how:"db,,specify the location of the database the server should use"`
-	DBPassFile    string `how:"db-password-file,,specify the location of the file containing the db user password"`
-	RedisUrl      string `how:"redis,,specify where the redis service is found"`
-	RedisPassFile string `how:"redis-password-file,,specify the location of the file containing the redis password"`
-	SessionTTL    int    `how:"session-ttl,,specify the time-to-live for a session"`
-	CertDir       string `how:"cert-dir,,specify the directory to store HTTPS certs"`
-	CertRenew     int    `how:"cert-renew,,specify the number of hours before certs are set to expire to renew certs"`
-	CertEmail     string `how:"cert-email,,set a contact email address for Let's Encrypt to send notifications to'"`
+	Hostname   string `how-long:"hostname" how-short:"n" how-env:"WEB_SRV_HOST" how-help:"specify the hostname the server should respond as"`
+	DBDriver   string `how-long:"db-driver" how-env:"WEB_SRV_DB_DRIVER" how-help:"specify the the database driver to use"`
+	DBAddr     string `how-long:"db" how-env:"WEB_SRV_DB" how-help:"specify the location of the database the server should use"`
+	SessionTTL int    `how-long:"session-ttl" how-env:"WEB_SRV_SESSION_TTL" how-help:"specify the time-to-live for a session"`
+	CertRenew  int    `how-long:"cert-renew" how-env:"WEB_SRV_CERT_RENEW" how-help:"specify the number of hours before certs are set to expire to renew certs"`
+	CertEmail  string `how:"cert-email" how-env:"WEB_SRV_CERT_EMAIL" how-help:"set a contact email address for Let's Encrypt to send notifications to'"`
 }
 
 func DefaultConfig() Config {
 	return Config{
-		Hostname:      hostname,
-		DBDriver:      dbDriver,
-		DBAddr:        dbConn,
-		DBPassFile:    "",
-		RedisUrl:      redisUrl,
-		RedisPassFile: "",
-		SessionTTL:    0,
-		CertDir:       certDir,
-		CertRenew:     certRenew,
-		CertEmail:     certEmail,
+		Hostname:   hostname,
+		DBDriver:   dbDriver,
+		DBAddr:     dbConn,
+		SessionTTL: 0,
+		CertRenew:  certRenew,
+		CertEmail:  certEmail,
 	}
 }
